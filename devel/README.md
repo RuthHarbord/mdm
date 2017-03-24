@@ -1,26 +1,26 @@
 # Multiregression Dynamic Models (MDM)
-[![Build Status](https://travis-ci.org/schw4b/mdm.png?branch=develop)](https://travis-ci.org/schw4b/mdm)
+[![Build Status](https://travis-ci.org/schw4b/multdyn.png?branch=develop)](https://travis-ci.org/schw4b/multdyn)
 
 # Developer Guide
 
 ## Working with Github
 
 ### Check out master
-    git clone https://github.com/schw4b/mdm.git
+    git clone https://github.com/schw4b/multdyn.git
 
-### Check out a release
-    git checkout tags/v1.0
-
-### Change to master
-    git checkout origin/master
-
-### Switch branches / push to develop branch
-    git checkout master
+### Switch to develop branch
     git checkout develop
+
+### Review, pull, commit and push
+    git status
+    git diff
+    git pull
+    git add foo
+    git commit -m "Update"
     git push origin develop
 
 ### Configure ssh key authentication
-    git remote set-url origin git@github.com:schw4b/mdm.git
+    git remote set-url origin git@github.com:schw4b/multdyn.git
 
 ### Merge develop to master
     # update DESCRIPTION file with new version if applicable
@@ -29,19 +29,32 @@
     git merge develop      # to bring changes to local master from your develop branch
     git push origin master # push current HEAD to remote master branch
 
+## Package building for CRAN
+    make doc
+    make build
+    make file=multdyn_1.5.tar.gz check
+
 ## Unit Testing
 Test functions are written for the *testthat* package and can be found in the folder `tests`.
 
-    # load MDM
-    setwd('~/workspace')
     library(devtools)
-    load_all('mdm')
-    # Run unit tests
     library(testthat)
-    test_dir('mdm/tests', reporter = 'Summary')
+    load_all('~/workspace/multdyn')
+    # Run unit tests
+    test_dir('~/workspace/multdyn/tests', reporter = 'Summary')
 
-    testthat results ================================================================
-    OK: 6 SKIPPED: 0 FAILED: 0
+	testthat results ==============================================================================
+	OK: 22 SKIPPED: 0 FAILED: 0
+
+	DONE =========================================================================================
+
+## Run benchmarks
+
+    library(devtools)
+    library(microbenchmark)
+    load_all('~/workspace/multdyn')
+    data("utestdata")
+    microbenchmark(exhaustive.search(myts,3,cpp=F),exhaustive.search(myts,3))
 
 ## Benchmarks
     Unit: microseconds
@@ -58,11 +71,52 @@ Test functions are written for the *testthat* package and can be found in the fo
 
 60-fold speed improvement compared to the native R implementation (cpp=F).
 
-## Run benchmarks
+## Magic stuff to resolve CRAN complaints
 
-    setwd('~/workspace')
-    library(devtools)
-    load_all('mdm')
-    library(microbenchmark)
-    data("utestdata")
-    microbenchmark(exhaustive.search(myts,3,cpp=F),exhaustive.search(myts,3))
+See https://github.com/RcppCore/Rcpp/issues/636
+
+Download R-devel.tar.gz from https://cran.r-project.org/sources.html
+```
+mkdir ~/tmp
+cd ~/tmp
+wget https://stat.ethz.ch/R/daily/R-devel.tar.gz
+tar -xvf R-devel.tar.gz
+```
+Then, in R, do the following:
+```
+source("~/tmp/R-devel/src/library/tools/R/sotools.R")
+source("~/tmp/R-devel/src/library/tools/R/utils.R")
+setwd("~/workspace/multdyn")
+
+package_native_routine_registration_skeleton(".")
+```
+The function will output some code, copy and paste this to `src/register.c`
+```
+#include <R.h>
+#include <Rinternals.h>
+#include <stdlib.h> // for NULL
+#include <R_ext/Rdynload.h>
+
+/* FIXME:
+   Check these declarations against the C/Fortran source code.
+*/
+
+/* .Call calls */
+extern SEXP multdyn_dlmLplCpp(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
+
+static const R_CallMethodDef CallEntries[] = {
+    {"multdyn_dlmLplCpp", (DL_FUNC) &multdyn_dlmLplCpp, 7},
+    {NULL, NULL, 0}
+};
+
+void R_init_multdyn(DllInfo *dll)
+{
+    R_registerRoutines(dll, NULL, CallEntries, NULL, NULL);
+    R_useDynamicSymbols(dll, FALSE);
+}
+```
+
+Finally, this needs to go into `NAMESPACE`, see Makefile.
+```
+useDynLib(packagename, .registration = TRUE).
+```
